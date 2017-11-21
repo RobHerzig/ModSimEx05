@@ -5,10 +5,12 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 
+import jdk.nashorn.internal.runtime.regexp.joni.MatcherFactory;
 import simulation.lib.Simulator;
 import simulation.lib.counter.ContinuousCounter;
 import simulation.lib.counter.Counter;
 import simulation.lib.counter.DiscreteAutocorrelationCounter;
+import simulation.lib.counter.DiscreteConfidenceCounter;
 import simulation.lib.counter.DiscreteConfidenceCounterWithRelativeError;
 import simulation.lib.counter.DiscreteCounter;
 import simulation.lib.histogram.ContinuousHistogram;
@@ -25,16 +27,16 @@ import simulation.lib.statistic.IStatisticObject;
  * program/simulator parameters. Starts the simulation.
  */
 public class SimulationStudy {
-	 /*
-	 * TODO Problem 5.1 - Configure program arguments here
-	 * TODO Problem 5.1.1 - nInit and lBatch
-	 * TODO Problem 5.1.3 - Add attributes to configure your E[ST] and E[IAT] for the simulation
-	 * Here you can set the different parameters for your simulation
-	 * Note: Units are real time units (seconds).
-	 * They get converted to simulation time units in setSimulationParameters.
-	 */
+
 	 // e.g. protected cNInit = ...
 	 //protected cCvar = ... <- configuration Parameter for cVar[IAT]
+	public int cNInit = 1000; //nInit is already given to another variable TODO: Maybe change name for better readability
+	public int lBatch = 1;
+	public double cCVar = 1d;
+	double relativeErrorThreshold = 0.05;
+	double absoluteErrorThreshold = 0.0001;
+	double cSystemUtilization = 0.95;
+	
 
 	/**
 	 * Main method
@@ -126,7 +128,7 @@ public class SimulationStudy {
 	public long numBatches;
 
 	/*
-	 * TODO Problem 5.1 - naming your statistic objects
+	 * TODO Finished? Problem 5.1 - naming your statistic objects
 	 * Here you have to set some names (as Sting objects) for all your statistic objects
 	 * They are later used to retrieve them from the dictionary
 	 */
@@ -145,6 +147,20 @@ public class SimulationStudy {
 	public String tempdtcBatchServiceTime = "temporaryDiscreteTimeCounterBatchServiceTime";
 	public String ccreBatchWaitingTime = "confidenceCounterWithRelativeErrorBatchWaitingTime";
 	public String ccreWaitingTime = "confidenceCounterWithRelativeErrorWaitingTime";
+	
+	//Extra names
+	public String discrCounterWithRelError = "discreteConfidenceCounterWithRelativeError";
+	public String confCounterForIndivWaitingTimeSamples = "confidenceCounterIndivWaitingSamples";
+	public String confCounterBatchMeans = "confidenceCounterBatchMeans";
+	public String counterWaitingBatchMeans = "counterMeanWaitingBatchMeans";
+	
+	public String discreteConfidenceCounterBatches = "discreteConfidenceCounterBatches";
+	public String relativeErrorCounterBatch = "relativeErrorCounterBatchMeans";
+	public String relativeErrorCounterWOBatch = "relativeErrorCounterWithoutBatch";
+	public String autoCorrelationCounter = "autoCorrelationCounter";
+	public String probabilityExcess = "probabilityExcess";
+	public String naiveWaitingCounter = "NaiveWaitingCounter";
+	
 
 	public long numWaitingTimeExceeds5TimesServiceTime;
 	public long numBatchWaitingTimeExceeds5TimesBatchServiceTime;
@@ -171,19 +187,35 @@ public class SimulationStudy {
 	private void setSimulationParameters() {
 
 		/*
-		 * TODO Problem 5.1.1 - Set simulation parameters
+		 * TODO Finished? Problem 5.1.1 - Set simulation parameters
 		 * Hint: Take a look at the attributes of this class which have no usages yet (This may be indicated by your IDE)
 		 */
 		// this.nInit = cNInit;
 		// this.cVar = ...
+		//QUOTE "!!! Make sure to use StdRNG objects with different seeds !!!"
+		StdRNG rng1 = new StdRNG(123789456);
+		StdRNG rng2 = new StdRNG(456789456);
+		StdRNG rng3 = new StdRNG(789789456);
+		StdRNG rngService = new StdRNG(System.currentTimeMillis());
+		
+		this.nInit = cNInit;
+		this.cVar = cCVar;
+		this.batchLength = lBatch;
+		
+		//granularity of 0.05 -> 1/20
+		double EST = 1d; //fixed value from exercise
+		double EIAT = Math.round(Math.min(Math.max(cSystemUtilization, 0.05), 0.95) * 20d) * 0.05; //only allows steps of 1/20th (0.05), cannot be 0
+		double rho = EST / EIAT; //from 5.1.3 - systemutilization
+		
+		if(/*this.cVar >= 0.5 && */this.cVar < .95) {
+			this.randVarInterArrivalTime = new ErlangK(rng1, rho, 4);
+		}else if(this.cVar < 1.95) {
+			this.randVarInterArrivalTime = new Exponential(rng2, rho);
+		} else {
+			this.randVarInterArrivalTime = new HyperExponential(rng3, rho, 2);
+		}
 
-
-		/*
-		 * TODO Problem 5.1.2 - Create random variables for IAT and ST
-		 * You may use different random variables for this.randVarInterArrivalTime, since Cvar[IAT] = {0.5, 1, 2}
-		 * You can use this.cVar as a configuration parameter for Cvar[IAT]
-		 * !!! Make sure to use StdRNG objects with different seeds !!!
-		 */
+		randVarServiceTime = new Exponential(rngService, 1);
 	}
 
 	/**
@@ -211,10 +243,19 @@ public class SimulationStudy {
 		statisticObjects.put(cthServerUtilization,
 				new ContinuousHistogram("server_utilization_over_time", 80, 0, 80, simulator));
 
-		/*
-		 * TODO Problem 5.1.1 - Create a DiscreteConfidenceCounterWithRelativeError
-		 * In order to check later if the simulation can be terminated according to the condition
-		 */
+		
+		statisticObjects.put(discrCounterWithRelError, new DiscreteConfidenceCounterWithRelativeError("Mean of Batches below rel. error bound", relativeErrorThreshold));
+		statisticObjects.put(discreteConfidenceCounterBatches, new DiscreteConfidenceCounter("batches", relativeErrorThreshold)); 
+		statisticObjects.put(relativeErrorCounterBatch, new DiscreteConfidenceCounterWithRelativeError("mean of batches relError less 5%", relativeErrorThreshold)); 
+		statisticObjects.put(relativeErrorCounterWOBatch, new DiscreteConfidenceCounterWithRelativeError("mean of Samples relError less 5%", relativeErrorThreshold)); 
+		statisticObjects.put(autoCorrelationCounter, new DiscreteAutocorrelationCounter("mean of batches autocorrelated?", (int) (relativeErrorThreshold * 200))); 
+		statisticObjects.put(probabilityExcess, new DiscreteCounter("Probability Excess Waiting time"));
+		statisticObjects.put(naiveWaitingCounter, new DiscreteCounter("Naive Waiting Counter"));
+		
+		//statisticObjects.put("WaitingTimeCounter5.1.4", new TimeWeightingCounter("WaitingTimeCounter5.1.4", simulator));
+		//statisticObjects.put("TimeWeightingServerUtilisation", new TimeWeightingCounter("TimeWeightingServerUtilisation", simulator));
+
+		
 		/*
 		 * TODO Problem 5.1.4 - Create counter to calculate the mean waiting time with batch means method
 		 */
@@ -253,9 +294,12 @@ public class SimulationStudy {
 		}
 		if (isDebugReport) {
 			/*
-			 * TODO Problem 5.1 - Output reporting information!
+			 * TODO Finished? Problem 5.1 - Output reporting information!
 			 * Print your statistic objects which are needed to answer the questions in the exercise sheet
 			 */
+			for (IStatisticObject statisticObjectInstance : statisticObjects.values()) {
+				System.out.println(statisticObjectInstance.report());
+			}
 
 		}
 
