@@ -1,6 +1,9 @@
 package simulation.lib;
 
+import java.util.Scanner;
+
 import simulation.lib.counter.Counter;
+import simulation.lib.counter.DiscreteConfidenceCounter;
 import simulation.lib.counter.DiscreteConfidenceCounterWithRelativeError;
 import simulation.lib.event.CustomerArrivalEvent;
 import simulation.lib.event.Event;
@@ -18,6 +21,8 @@ public class Simulator implements IEventObserver{
 	private long now;
 	private SortableQueue ec;
 	private boolean stop;
+	
+	int nInitCounter = 0;
 	
 	/**
 	 * Contains simulator statistics and parameters
@@ -182,19 +187,33 @@ public class Simulator implements IEventObserver{
             }
         }
 	}
+	
+	void waitForEnterPressBeforeContinue() {
+		System.out.println("Press \"ENTER\" to continue...");
+		Scanner scanner = new Scanner(System.in);
+		scanner.nextLine();
+	}
 
 	/**
 	 * Update statistics, fired from service completion event
 	 * @param currentCustomer current customer
 	 */
 	private void updateStatsSCE(Customer currentCustomer){
+		System.out.println("Updating Stats SCE... | isTransientPhaseOver = " + this.state.isTransientPhaseOver() + " | nInitCounter = " + nInitCounter);
+//		waitForEnterPressBeforeContinue();
+		
 		sims.minQS = state.queueSize < sims.minQS ? state.queueSize : sims.minQS;
 		sims.maxQS = state.queueSize > sims.maxQS ? state.queueSize : sims.maxQS;
 
         // update statistics if transient phase is over
         if(this.state.isTransientPhaseOver()) {
             if (currentCustomer != null) {
-
+            	nInitCounter++;
+            	if(nInitCounter < sims.nInit) {
+            		System.out.println("nInit not yet reached (counter = " + nInitCounter + ", nInit = " + sims.nInit + ")");
+            		return;
+            	}
+//            	System.out.println("nInitCounter = " + nInitCounter);
             	/*
 				 * TODO Problem 5.1 - Handle batches and update your counters here
 				 * - Update your batch means counters if a batch is full
@@ -205,14 +224,39 @@ public class Simulator implements IEventObserver{
 
                 // update customer service end time
                 currentCustomer.serviceEndTime = getSimTime();
-
-
+                
                 sims.statisticObjects.get(sims.dtcWaitingTime).count(simTimeToRealTime(currentCustomer.getTimeInQueue()));
                 sims.statisticObjects.get(sims.dthWaitingTime).count(simTimeToRealTime(currentCustomer.getTimeInQueue()));
 
                 sims.statisticObjects.get(sims.dtcServiceTime).count(simTimeToRealTime(currentCustomer.getTimeInService()));
                 sims.statisticObjects.get(sims.dthServiceTime).count(simTimeToRealTime(currentCustomer.getTimeInService()));
+                
+                sims.statisticObjects.get(sims.relativeErrorCounterWOBatch).count(simTimeToRealTime(currentCustomer.getTimeInQueue()));
+                
+                if(simTimeToRealTime(currentCustomer.getTimeInQueue()) > 5d) {
+                	sims.statisticObjects.get(sims.probabilityExcess).count(1);
+                } else {
+                	sims.statisticObjects.get(sims.probabilityExcess).count(0);
+                }
+                
+                DiscreteConfidenceCounter confCountWithBatches = (DiscreteConfidenceCounter) sims.statisticObjects.get(sims.discreteConfidenceCounterBatches);
+                DiscreteConfidenceCounterWithRelativeError relativeErrorCounter = (DiscreteConfidenceCounterWithRelativeError) sims.statisticObjects.get(sims.relativeErrorCounterBatch);
+                confCountWithBatches.count(simTimeToRealTime(currentCustomer.getTimeInQueue()));
+                double mean = 0d;
+    			
+    			if(confCountWithBatches.getNumSamples() >= sims.batchLength){
+    				mean = confCountWithBatches.getMean();
+    				relativeErrorCounter.count(mean);
+    				
+    				if(relativeErrorCounter.maxRelErr() < sims.relativeErrorThreshold || 
+    						relativeErrorCounter.maxAbsErr() < sims.absoluteErrorThreshold && 
+    						relativeErrorCounter.maxAbsErr() != 0d){
+    					stop();
+    				}
 
+    				sims.statisticObjects.get(sims.autoCorrelationCounter).count(mean);
+    				confCountWithBatches.reset();
+    			}
             }
 
             // update server utilization

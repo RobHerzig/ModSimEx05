@@ -60,7 +60,7 @@ public class SimulationState {
 	 * @return true if phase is over
 	 */
 	public boolean isTransientPhaseOver() {
-		boolean isOver = (sims.nInit > numSamples);
+		boolean isOver = (sims.nInit < numSamples);
 		return isOver;
 	}
 

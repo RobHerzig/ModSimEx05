@@ -1,0 +1,5 @@
+#counter ; numSamples ; MEAN; VAR; STD; CVAR; MIN; MAX
+server utilization/time;20799;0.9436619871689288;0.05316404114131723;0.23057328800474097;0.24433885346646383;0.0;1.0
+queue occupancy/time;10449;52.58709765770096;1817.196564193714;42.628588578484674;0.8106282810274482;0.0;187.0
+Counter Server Utilization;0;0.0;0.0;0.0;0.0;Infinity;-Infinity
+Counter WaitingTime;0;0.0;0.0;0.0;0.0;Infinity;-Infinity

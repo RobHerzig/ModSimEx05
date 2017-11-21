@@ -30,12 +30,12 @@ public class SimulationStudy {
 
 	 // e.g. protected cNInit = ...
 	 //protected cCvar = ... <- configuration Parameter for cVar[IAT]
-	public int cNInit = 1000; //nInit is already given to another variable TODO: Maybe change name for better readability
-	public int lBatch = 1;
-	public double cCVar = 1d;
-	double relativeErrorThreshold = 0.05;
-	double absoluteErrorThreshold = 0.0001;
-	double cSystemUtilization = 0.95;
+	public int cNInit = 100;
+	public int lBatch = 7500;
+	public double cCVar = 2d;
+	public double relativeErrorThreshold = 0.05;
+	public double absoluteErrorThreshold = 0.0001;
+	public double cSystemUtilization = 0.95;
 	
 
 	/**
@@ -161,6 +161,9 @@ public class SimulationStudy {
 	public String probabilityExcess = "probabilityExcess";
 	public String naiveWaitingCounter = "NaiveWaitingCounter";
 	
+	public String waitingTimeCounter = "continuousWaitingTimeCounter";
+	public String contServerUtil = "continuousServerUtilCounter";
+	
 
 	public long numWaitingTimeExceeds5TimesServiceTime;
 	public long numBatchWaitingTimeExceeds5TimesBatchServiceTime;
@@ -185,7 +188,7 @@ public class SimulationStudy {
 	 * needed.
 	 */
 	private void setSimulationParameters() {
-
+		System.out.println("Setting Simulation Parameters...");
 		/*
 		 * TODO Finished? Problem 5.1.1 - Set simulation parameters
 		 * Hint: Take a look at the attributes of this class which have no usages yet (This may be indicated by your IDE)
@@ -222,6 +225,7 @@ public class SimulationStudy {
 	 * Initializes statistic objects. Adds them into Hashmap.
 	 */
 	private void initStatistics() {
+		System.out.println("Initializing statistics...");
 		maxQS = Long.MIN_VALUE;
 		minQS = Long.MAX_VALUE;
 
@@ -244,34 +248,18 @@ public class SimulationStudy {
 				new ContinuousHistogram("server_utilization_over_time", 80, 0, 80, simulator));
 
 		
-		statisticObjects.put(discrCounterWithRelError, new DiscreteConfidenceCounterWithRelativeError("Mean of Batches below rel. error bound", relativeErrorThreshold));
-		statisticObjects.put(discreteConfidenceCounterBatches, new DiscreteConfidenceCounter("batches", relativeErrorThreshold)); 
-		statisticObjects.put(relativeErrorCounterBatch, new DiscreteConfidenceCounterWithRelativeError("mean of batches relError less 5%", relativeErrorThreshold)); 
-		statisticObjects.put(relativeErrorCounterWOBatch, new DiscreteConfidenceCounterWithRelativeError("mean of Samples relError less 5%", relativeErrorThreshold)); 
-		statisticObjects.put(autoCorrelationCounter, new DiscreteAutocorrelationCounter("mean of batches autocorrelated?", (int) (relativeErrorThreshold * 200))); 
+//		statisticObjects.put(discrCounterWithRelError, new DiscreteConfidenceCounterWithRelativeError("Batch Mean below rel. error threshold", relativeErrorThreshold));
+		statisticObjects.put(discreteConfidenceCounterBatches, new DiscreteConfidenceCounter("Batches", relativeErrorThreshold)); 
+		statisticObjects.put(relativeErrorCounterBatch, new DiscreteConfidenceCounterWithRelativeError("Mean of Batches below" + relativeErrorCounterBatch.toString(), relativeErrorThreshold)); 
+		statisticObjects.put(relativeErrorCounterWOBatch, new DiscreteConfidenceCounterWithRelativeError("Mean of Samples with rel. error below" + relativeErrorCounterBatch.toString(), relativeErrorThreshold)); 
+		statisticObjects.put(autoCorrelationCounter, new DiscreteAutocorrelationCounter("Autocorrelation Mean of Batches", (int) (relativeErrorThreshold * 200))); //TODO: Necessary?
+		
 		statisticObjects.put(probabilityExcess, new DiscreteCounter("Probability Excess Waiting time"));
 		statisticObjects.put(naiveWaitingCounter, new DiscreteCounter("Naive Waiting Counter"));
-		
-		//statisticObjects.put("WaitingTimeCounter5.1.4", new TimeWeightingCounter("WaitingTimeCounter5.1.4", simulator));
-		//statisticObjects.put("TimeWeightingServerUtilisation", new TimeWeightingCounter("TimeWeightingServerUtilisation", simulator));
 
-		
-		/*
-		 * TODO Problem 5.1.4 - Create counter to calculate the mean waiting time with batch means method
-		 */
-		/*
-		 * TODO Problem 5.1.4 - Provide means to keep track of E[WT] > 5 * E[ST]
-		 * !!! This is also called "waiting probability" in the sheet !!!
-		 */
-		/*
-		 * TODO Problem 5.1.4 - Create confidence counter for individual waiting time samples
-		 */
-		/*
-		 * TODO Problem 5.1.4 - Create confidence counter for to count waiting times with batch means method
-		 */
-		/*
-		 * TODO Problem 5.1.5 - Create a DiscreteAutocorrelationCounter for batch means
-		 */
+		//continuous counters for weighting and util time
+		statisticObjects.put(waitingTimeCounter, new ContinuousCounter("Counter WaitingTime", simulator));
+		statisticObjects.put(contServerUtil, new ContinuousCounter("Counter Server Utilization", simulator));
 
 	}
 
@@ -282,6 +270,7 @@ public class SimulationStudy {
 	 * files.
 	 */
 	public void report() {
+		System.out.println("Start reporting...");
 		String sd = new SimpleDateFormat("yyyyMMdd_HHmmss_").format(new Date(System.currentTimeMillis()));
 		String destination = sd + this.getClass().getSimpleName();
 
